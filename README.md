@@ -25,6 +25,16 @@ The Machine of POI 是一款使用 **Python、PySide6 和 OpenCV** 开发的 Win
 
 程序通过本地摄像头或用户主动连接的授权视频源获取画面，在**本机**检测人脸、提取特征、匹配已录入人物，并绘制跟随人脸移动的 HUD 识别框。人脸识别的计算过程不调用云端 API。
 
+## Screenshots / 软件截图
+
+### Main Interface / 软件主界面
+
+![The Machine Main Interface](assets\the Machine of POI 预览图\main-window.png)
+
+### Face Recognition / 人脸识别效果
+
+![The Machine Face Recognition](assets\the Machine of POI 预览图\face-recognition.jpg)
+
 ### 已实现的功能
 
 - **实时检测与跟踪：** 检测画面中的一张或多张人脸，跟随移动绘制识别框。
