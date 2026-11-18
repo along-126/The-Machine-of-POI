@@ -1,13 +1,13 @@
 # THE MACHINE OF POI
 
-**《疑犯追踪》（Person of Interest）风格的本地人脸识别可视化程序**  
+**《疑犯追踪》（the Person of Interest）风格的本地人脸识别可视化程序**  
 **A local face-recognition visualizer inspired by *Person of Interest*.**
 
 ![Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D4) ![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB) ![Status](https://img.shields.io/badge/Status-Phase%201%20%2F%20Experimental-f5a623)
 
 > **非官方粉丝项目 / Unofficial fan project**  
 > 本项目借鉴电视剧中 The Machine 的视觉风格，不隶属于或代表电视剧版权方。它是独立的人脸识别**可视化**工具，不参与 Windows Hello 身份验证，也不负责解锁电脑。  
-> This project takes visual inspiration from The Machine in *Person of Interest*. It is not affiliated with the show's rights holders. It is a standalone **visualization** application—not a Windows Hello authentication or unlock tool.
+> This project takes visual inspiration from The Machine in *the Person of Interest*. It is not affiliated with the show's rights holders. It is a standalone **visualization** application—not a Windows Hello authentication or unlock tool.
 
 **语言 / Languages：** [简体中文](#简体中文) · [English](#english)
 
@@ -115,7 +115,7 @@ The-Machine-of-POI/
 - 增加本地视频文件导入与播放。
 - 研究多路摄像头同时显示及性能控制。
 - 继续打磨识别框动画、扫描效果与界面细节。
-- Windows Hello 相关研究属于**单独的后续阶段**；当前软件不修改 Windows 登录机制。
+- 进行纯英文版本的开发。
 
 ---
 
@@ -123,7 +123,7 @@ The-Machine-of-POI/
 
 ### Overview
 
-**The Machine of POI** is an experimental Windows 11 desktop application built with **Python, PySide6, and OpenCV**. It recreates the face-tracking and classification HUD aesthetic inspired by *Person of Interest*.
+**The Machine of POI** is an experimental Windows 11 desktop application built with **Python, PySide6, and OpenCV**. It recreates the face-tracking and classification HUD aesthetic inspired by *the Person of Interest*.
 
 It reads video from a local camera or a user-authorized stream, detects and tracks faces, compares embeddings with a local SQLite database, and overlays a classification HUD. **Face processing and matching run locally**, without a cloud recognition service.
 
