@@ -29,11 +29,11 @@ The Machine of POI 是一款使用 **Python、PySide6 和 OpenCV** 开发的 Win
 
 ### Main Interface / 软件主界面
 
-![The Machine Main Interface](assets\the Machine of POI 预览图\main-window.png)
+![The Machine Main Interface](assets/the-Machine-of-POI-screenshots/main-window.png)
 
 ### Face Recognition / 人脸识别效果
 
-![The Machine Face Recognition](assets\the Machine of POI 预览图\face-recognition.jpg)
+![The Machine Face Recognition](assets/the-Machine-of-POI-screenshots/face-recognition.jpg)
 
 ### 已实现的功能
 
