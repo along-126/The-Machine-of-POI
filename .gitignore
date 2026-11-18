@@ -1,0 +1,50 @@
+# The Machine of POI — keep local runtime and sensitive data out of Git.
+
+# Virtual environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Biometric data, private camera configuration, and database backups
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.bak
+*.db-wal
+*.db-shm
+
+# Downloaded recognition models
+models/
+*.onnx
+*.download
+
+# Secrets and local-only settings
+.env
+.env.*
+*.local.json
+
+# Local recordings, photos, and build artifacts
+recordings/
+captures/
+photos/
+build/
+dist/
+*.log
+*.tmp
+*.zip
+
+# Editor / operating system
+.idea/
+.vscode/
+Thumbs.db
+desktop.ini
+.DS_Store
