@@ -1,7 +1,7 @@
 # THE MACHINE OF POI
 
 **《疑犯追踪》（the Person of Interest）风格的本地人脸识别可视化程序**  
-**A local face-recognition visualizer inspired by *Person of Interest*.**
+**A local face-recognition visualizer inspired by *the Person of Interest*.**
 
 ![Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D4) ![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB) ![Status](https://img.shields.io/badge/Status-Phase%201%20%2F%20Experimental-f5a623)
 
@@ -168,9 +168,19 @@ Local video-file import; more reliable network-stream handling and diagnostics; 
 
 Python 3.14 · PySide6 · OpenCV · NumPy · SQLite · OpenCV Zoo YuNet / SFace · HTTP/MJPEG
 
+## License / 开源许可证
+
+This project's original source code is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+本项目的原创源代码采用 MIT 开源许可证，详情请参阅 [LICENSE](LICENSE)。
+
+Third-party libraries, models, and other materials remain subject to their respective licenses.
+
+第三方依赖库、人脸识别模型及其他素材仍遵循各自的许可证。
+
 ## Credits & legal / 致谢与声明
 
-- Design inspiration: *Person of Interest* / The Machine. All related names, marks and television imagery belong to their respective rights holders.
+- Design inspiration: *the Person of Interest* / The Machine. All related names, marks and television imagery belong to their respective rights holders.
 - Face models: OpenCV Zoo **YuNet** and **SFace**. Third-party libraries and model weights remain subject to their respective licenses and notices.
 - This is an **unofficial, non-affiliated fan project**.
-- **License:** A project license has **not yet been selected**. Publishing the source code does not automatically grant permission to reuse, modify, or redistribute it. A license should be added after reviewing third-party rights and choosing the intended sharing terms.
+
