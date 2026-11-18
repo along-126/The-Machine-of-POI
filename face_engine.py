@@ -22,10 +22,19 @@ class FaceEngine:
             raise FileNotFoundError("模型文件缺失：" + ", ".join(missing) + "。请先运行“02_download_models.bat”。")
         if not hasattr(cv2, "FaceDetectorYN") or not hasattr(cv2, "FaceRecognizerSF"):
             raise RuntimeError("当前 OpenCV 不支持 YuNet/SFace，请重新安装 requirements.txt。")
+        # OpenCV's native file-path API may fail on non-ASCII Windows paths.
+        # Python's pathlib handles Unicode paths reliably, so read the model
+        # bytes in Python and use OpenCV's in-memory model overload instead.
+        # This works whether the project is in an English or Chinese path.
+        detector_bytes = np.frombuffer(YUNET_MODEL.read_bytes(), dtype=np.uint8)
+        recognizer_bytes = np.frombuffer(SFACE_MODEL.read_bytes(), dtype=np.uint8)
+        empty_config = np.empty(0, dtype=np.uint8)  # ONNX requires no config.
         self.detector = cv2.FaceDetectorYN.create(
-            str(YUNET_MODEL), "", (320, 320), 0.8, 0.3, 5000
+            "onnx", detector_bytes, empty_config, (320, 320), 0.8, 0.3, 5000
         )
-        self.recognizer = cv2.FaceRecognizerSF.create(str(SFACE_MODEL), "")
+        self.recognizer = cv2.FaceRecognizerSF.create(
+            "onnx", recognizer_bytes, empty_config
+        )
         self._input_size = None
 
     def detect(self, frame: np.ndarray) -> list[np.ndarray]:
