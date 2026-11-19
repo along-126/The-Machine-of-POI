@@ -1,7 +1,7 @@
 # THE MACHINE OF POI
 
-**《疑犯追踪》（the Person of Interest）风格的本地人脸识别可视化程序**  
-**A local face-recognition visualizer inspired by *the Person of Interest*.**
+**《疑犯追踪》（Person of Interest）风格的本地人脸识别可视化程序**  
+**A local face-recognition visualizer inspired by *Person of Interest*.**
 
 ![Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D4) ![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB) ![Status](https://img.shields.io/badge/Status-Phase%201%20%2F%20Experimental-f5a623)
 
@@ -123,7 +123,7 @@ The-Machine-of-POI/
 
 ### Overview
 
-**The Machine of POI** is an experimental Windows 11 desktop application built with **Python, PySide6, and OpenCV**. It recreates the face-tracking and classification HUD aesthetic inspired by *the Person of Interest*.
+**The Machine of POI** is an experimental Windows 11 desktop application built with **Python, PySide6, and OpenCV**. It recreates the face-tracking and classification HUD aesthetic inspired by *Person of Interest*.
 
 It reads video from a local camera or a user-authorized stream, detects and tracks faces, compares embeddings with a local SQLite database, and overlays a classification HUD. **Face processing and matching run locally**, without a cloud recognition service.
 

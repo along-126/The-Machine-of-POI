@@ -5,6 +5,8 @@ subject to source permission. No Windows Hello or logon changes are made.
 """
 from __future__ import annotations
 
+import math
+
 import json
 import sqlite3
 import sys
@@ -15,14 +17,15 @@ from uuid import uuid4
 from zoneinfo import available_timezones
 
 import cv2
-from PySide6.QtCore import Qt, QDateTime, QTimer
-from PySide6.QtGui import QImage, QPixmap
+from PySide6.QtCore import Qt, QDateTime, QTimer, QEvent, QVariantAnimation, QEasingCurve
+from PySide6.QtGui import QImage, QPixmap, QIcon, QColor, QPainter, QPen, QFont, QFontDatabase, QCursor
 from PySide6.QtWidgets import (
     QAbstractItemView, QApplication, QCheckBox, QComboBox, QDateTimeEdit,
     QDialog, QDialogButtonBox, QDoubleSpinBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMainWindow, QMenu, QMessageBox, QPushButton, QSpinBox, QTabWidget, QTableWidget,
-    QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView,
+    QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QProgressBar, QInputDialog,
+    QGraphicsOpacityEffect, QSizePolicy,
 )
 
 from camera_sources import validate_stream_url
@@ -33,9 +36,40 @@ from hud import render
 from metadata import clock_text, coordinates_text
 from mjpeg_capture import MjpegCapture, prefers_http_mjpeg, MJPEGStreamError
 from tracking import FaceTracker
+from standby import render_standby
+from ui_effects import smooth_pulse_opacity
 
 ROOT = Path(__file__).resolve().parent
 SETTINGS_FILE = ROOT / "data" / "settings.json"
+
+
+# The Fangzheng typeface must be installed/licensed by the user. We do NOT
+# distribute fonts. Qt falls back cleanly if Fangzheng is unavailable.
+def preferred_chinese_font():
+    families = list(QFontDatabase.families())
+    prioritized = [
+        "方正黑体", "方正黑体_GBK", "方正黑体简体", "方正黑体简体_GBK",
+        "FZHei-B01", "FZHei-B01S", "FZHei-B01T",
+    ]
+    for target in prioritized:
+        for available in families:
+            if available.casefold() == target.casefold():
+                return available
+    for available in families:
+        if "方正黑体" in available or "fzhei" in available.lower():
+            return available
+    return "Microsoft YaHei UI"
+
+
+LEGEND_HTML = (
+    '<span style="color:#eeeeee">● IRRELEVANT</span> &nbsp;'
+    '<span style="color:#ff5050">● THREAT</span><br>'
+    '<span style="color:#ffe550">● ADMIN / PRIMARY ASSET / SECONDARY ASSET / CONTINGENCY</span><br>'
+    '<span style="color:#3b9fff">● ASSET CATALYST</span><br>'
+    '<span style="color:#ffe550">◩ ANALOG INTERFACE / ROOT</span><br>'
+    '<span style="color:#eff3fb">◩ RELEVANT-ONE / RELEVANT-TWO / RELEVANT-THREE / RELEVANT-OTHER</span><br>'
+    '<span style="color:#ff6868">◩ IRRELEVANT THREAT</span>'
+)
 
 
 def load_settings():
@@ -205,6 +239,82 @@ class CoordinatesDialog(QDialog):
                 "lat": self.lat.value(), "lon": self.lon.value()}
 
 
+class AppearanceSettingsDialog(QDialog):
+    """Only user-owned local video assets are selected. Nothing is downloaded."""
+    def __init__(self, settings, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("The Machine · 界面设置")
+        self.resize(560, 250)
+        root = QVBoxLayout(self)
+        form = QFormLayout()
+        self.default_camera = QSpinBox()
+        self.default_camera.setRange(0, 20)
+        self.default_camera.setValue(int(settings.get("default_camera", 0)))
+        form.addRow("默认摄像头编号", self.default_camera)
+        self.enable_intro = QCheckBox("开启待启动循环动画")
+        self.enable_intro.setChecked(bool(settings.get("intro_enabled", True)))
+        form.addRow("待启动动画", self.enable_intro)
+        self.video_path = QLineEdit(str(settings.get("intro_video_path", "")))
+        self.video_path.setPlaceholderText("不指定时使用内置原创监控风格动态画面")
+        source_row = QHBoxLayout()
+        source_row.addWidget(self.video_path, 1)
+        choose_btn = QPushButton("选择本地视频…")
+        choose_btn.clicked.connect(self.browse_video)
+        source_row.addWidget(choose_btn)
+        clear_btn = QPushButton("清除")
+        clear_btn.clicked.connect(self.video_path.clear)
+        source_row.addWidget(clear_btn)
+        form.addRow("启动视频", source_row)
+        root.addLayout(form)
+        # HUD category guide is available on demand instead of permanently
+        # occupying screen space.
+        self.legend_button = QPushButton("边框说明")
+        self.legend_button.clicked.connect(self.show_border_legend)
+        root.addWidget(self.legend_button)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def show_border_legend(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("The Machine · 边框说明")
+        dialog.resize(600, 290)
+        layout = QVBoxLayout(dialog)
+        label = QLabel(LEGEND_HTML)
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setWordWrap(True)
+        label.setStyleSheet("font-size:14px; line-height:150%; padding:12px;")
+        layout.addWidget(label)
+        close_btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        close_btn.rejected.connect(dialog.reject)
+        layout.addWidget(close_btn)
+        dialog.exec()
+
+    def browse_video(self):
+        path, _ = QFileDialog.getOpenFileName(self, "选择有权使用的本地启动视频", "",
+                                              "Video Files (*.mp4 *.avi *.mov *.mkv);;All files (*)")
+        if path:
+            self.video_path.setText(path)
+
+    def result_settings(self):
+        return {"default_camera": self.default_camera.value(),
+                "intro_enabled": self.enable_intro.isChecked(),
+                "intro_video_path": self.video_path.text().strip()}
+
+
+def settings_icon():
+    """White gear/person icon matching the user-provided reference.
+
+    Use a cleaned transparent icon asset (no checkerboard) in assets/ui. If
+    it is missing, fall back to a simple built-in system icon.
+    """
+    icon_path = ROOT / "assets" / "ui" / "settings_person_gear_white.png"
+    if icon_path.is_file():
+        return QIcon(str(icon_path))
+    return QIcon.fromTheme("preferences-system")
+
+
 class MoreCamerasDialog(QDialog):
     """Authorized network streams plus Windows-exposed camera indices.
 
@@ -346,10 +456,31 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("THE MACHINE | 本地人脸识别可视化 · 第一阶段")
         self.resize(1370, 840)
         self.setMinimumSize(1060, 710)
+        self.chinese_font_family = preferred_chinese_font()
         self.setStyleSheet("""
-            QMainWindow, QWidget { background:#090d13; color:#e9edf4; font-size:13px; }
-            QLabel#Title { color:#f5f7fa; font-size:24px; font-weight:bold; letter-spacing:2px; }
+            QMainWindow, QWidget { background:#090d13; color:#e9edf4;
+                                   font-family:"FZ_FONT_PLACEHOLDER", "Microsoft YaHei UI"; font-size:13px; }
+            QLabel#Title { color:#f5f7fa; font-size:23px; font-weight:bold; letter-spacing:1px; }
             QLabel#SubTitle { color:#7e91a8; font-size:12px; }
+            QFrame#MachineBanner { border:2px solid #d7dce2; border-radius:10px;
+                                    background:#07090c; }
+            QLabel#MachineName { font-family:"Bahnschrift", "Arial Narrow";
+                                  font-size:22px; font-weight:bold; color:#a7abb1;
+                                  border:none; background:transparent; }
+            QLabel#MachineDot { background:#7f8389; border-radius:10px;
+                                 min-width:20px; max-width:20px;
+                                 min-height:20px; max-height:20px; }
+            QLabel#BootState { font-family:"Bahnschrift", "Arial Narrow";
+                                 font-size:20px; font-weight:bold; color:#e8eef3;
+                                 background:transparent; border:none; }
+            QProgressBar#BootProgress { background:#17212b; border:2px solid #b7c3ce;
+                                         height:16px; text-align:center; }
+            QProgressBar#BootProgress::chunk { background:#b3c2d0; }
+            QPushButton#SettingsIcon { background:#16212d; border:1px solid #b9c4cf;
+                                        border-radius:6px; padding:4px; }
+            QLabel#StartPrompt { background:transparent; color:#f2f2f2;
+                                 font-family:"FZ_FONT_PLACEHOLDER", "Microsoft YaHei UI";
+                                 font-size:20px; font-weight:bold; letter-spacing:1px; }
             QLabel#Status { color:#e2df83; font-weight:bold; }
             QLabel#Camera { background:#020305; border:1px solid #263545; }
             QFrame#SidePanel { background:#0e1722; border:1px solid #203040; border-radius:6px; }
@@ -370,7 +501,7 @@ class MainWindow(QMainWindow):
                 background:#091521; color:#f0f5ff; border:1px solid #35506b;
                 border-radius:4px; padding:4px; }
             QDialog, QTabWidget::pane { background:#0e1722; }
-        """)
+        """.replace("FZ_FONT_PLACEHOLDER", self.chinese_font_family))
 
         self.db = Database()
         self.settings = load_settings()
@@ -385,6 +516,14 @@ class MainWindow(QMainWindow):
         self.source_kind = "local"
         self.source_key = f"local:{self.settings.get('camera', 0)}"
         self.source_name = ""
+        self.settings.setdefault("default_camera", 0)
+        self.settings.setdefault("intro_enabled", True)
+        self.settings.setdefault("intro_video_path", "")
+        self.settings.setdefault("boot_seconds", 1.0)
+        self.intro_capture = None
+        self._intro_error_path = None
+        self.boot_finished = False
+        self.boot_started_at = time.perf_counter()
         self.frame_count = 0
         self.last_timestamp = None
         self.smoothed_fps = 0.0
@@ -396,23 +535,65 @@ class MainWindow(QMainWindow):
         outer = QVBoxLayout(central)
         outer.setSpacing(11)
         outer.setContentsMargins(15, 14, 15, 14)
-        title = QLabel("THE MACHINE  //  CLASSIFICATION")
-        title.setObjectName("Title")
-        outer.addWidget(title)
-        subtitle = QLabel("LOCAL SURVEILLANCE VISUALIZATION     ·     PYTHON / OPENCV     ·     NO WINDOWS LOGIN MODIFICATION")
-        subtitle.setObjectName("SubTitle")
-        outer.addWidget(subtitle)
+        # Single status strip replaces both lines of the previous header.
+        header = QHBoxLayout()
+        header.setSpacing(9)
+        outer.addLayout(header)
+        banner = QFrame()
+        banner.setObjectName("MachineBanner")
+        banner.setMinimumHeight(95)
+        banner_layout = QHBoxLayout(banner)
+        banner_layout.setContentsMargins(22, 10, 18, 10)
+        banner_layout.setSpacing(14)
+        self.signal_dot = QLabel()
+        self.signal_dot.setObjectName("MachineDot")
+        self.signal_dot.setFixedSize(20, 20)
+        banner_layout.addWidget(self.signal_dot, alignment=Qt.AlignmentFlag.AlignVCenter)
+        self.machine_name = QLabel("The Machine")
+        self.machine_name.setObjectName("MachineName")
+        banner_layout.addWidget(self.machine_name, 1)
+        boot_section = QVBoxLayout()
+        boot_section.setSpacing(2)
+        self.boot_state = QLabel("PROCESSING...")
+        self.boot_state.setObjectName("BootState")
+        self.ready_fade = QGraphicsOpacityEffect(self.boot_state)
+        self.boot_state.setGraphicsEffect(self.ready_fade)
+        self.boot_state.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.boot_state.setMinimumWidth(235)
+        self.boot_progress = QProgressBar()
+        self.boot_progress.setObjectName("BootProgress")
+        self.boot_progress.setMaximum(100)
+        self.boot_progress.setTextVisible(False)
+        self.boot_progress.setFixedWidth(235)
+        for control in (self.boot_state, self.boot_progress):
+            control.setToolTip("右键设置启动加载时间")
+            control.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            control.customContextMenuRequested.connect(self.adjust_boot_duration)
+        boot_section.addWidget(self.boot_state)
+        boot_section.addWidget(self.boot_progress)
+        banner_layout.addLayout(boot_section)
+        header.addWidget(banner, 1)
+        self.settings_button = QPushButton()
+        self.settings_button.setObjectName("SettingsIcon")
+        self.settings_button.setIcon(settings_icon())
+        self.settings_button.setIconSize(QPixmap(36,36).size())
+        self.settings_button.setToolTip("设置")
+        self.settings_button.setAccessibleName("设置")
+        self.settings_button.setFixedSize(48,48)
+        self.settings_button.clicked.connect(self.open_appearance_settings)
+        header.addWidget(self.settings_button, alignment=Qt.AlignmentFlag.AlignTop)
 
         row = QHBoxLayout()
-        row.setSpacing(12)
+        row.setSpacing(0)
         outer.addLayout(row, 1)
         left = QVBoxLayout()
         row.addLayout(left, 1)
 
-        self.screen = QLabel("等待开启摄像头\n\nSTART VISUALIZATION")
+        self.screen = QLabel()
         self.screen.setObjectName("Camera")
         self.screen.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.screen.setMinimumSize(620, 435)
+        self.screen.setMinimumSize(620, 410)
+        self.screen.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.screen.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.screen.customContextMenuRequested.connect(self.video_context_menu)
         left.addWidget(self.screen, 1)
@@ -432,6 +613,13 @@ class MainWindow(QMainWindow):
         top.addLayout(clocks)
         over.addLayout(top)
         over.addStretch()
+        self.start_prompt = QLabel("按ENTER键启动")
+        self.start_prompt.setObjectName("StartPrompt")
+        self.start_prompt.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.start_prompt.hide()
+        self.prompt_fade = QGraphicsOpacityEffect(self.start_prompt)
+        self.start_prompt.setGraphicsEffect(self.prompt_fade)
+        over.addWidget(self.start_prompt, alignment=Qt.AlignmentFlag.AlignCenter)
         bottom = QHBoxLayout()
         bottom.addStretch()
         self.coordinates_button = self.video_text_button(self.edit_coordinates)
@@ -441,19 +629,18 @@ class MainWindow(QMainWindow):
         self.status = QLabel("状态：未开启；摄像头未被访问。")
         self.status.setObjectName("Status")
         left.addWidget(self.status)
-        self.more_cameras_button = QPushButton("＋ 连接更多摄像头")
-        self.more_cameras_button.setMinimumHeight(38)
-        self.more_cameras_button.clicked.connect(self.open_more_cameras)
-        more_row = QHBoxLayout()
-        more_row.addStretch(1)
-        more_row.addWidget(self.more_cameras_button, 2)
-        more_row.addStretch(1)
-        left.addLayout(more_row)
 
         side = QFrame()
         side.setObjectName("SidePanel")
-        side.setFixedWidth(369)
-        row.addWidget(side)
+        self.side_panel = side
+        self.sidebar_width = 369
+        side.setMinimumWidth(0)
+        side.setMaximumWidth(0)
+        # A fixed horizontal size policy is important: when the main video
+        # layout has stretch=1, an Ignored/zero-stretch panel may be allocated
+        # 0 pixels even when maximumWidth is animated to a larger value.
+        side.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        row.addWidget(side, 0)
         side_layout = QVBoxLayout(side)
         side_layout.setSpacing(7)
         side_layout.setContentsMargins(12, 12, 12, 12)
@@ -462,7 +649,7 @@ class MainWindow(QMainWindow):
         camrow.addWidget(QLabel("摄像头编号"))
         self.camera_select = QSpinBox()
         self.camera_select.setRange(0, 20)
-        self.camera_select.setValue(int(self.settings.get("camera", 0)))
+        self.camera_select.setValue(int(self.settings.get("default_camera", 0)))
         self.camera_select.valueChanged.connect(self.on_camera_number_changed)
         camrow.addWidget(self.camera_select)
         side_layout.addLayout(camrow)
@@ -481,6 +668,7 @@ class MainWindow(QMainWindow):
         self.start_button = QPushButton("▶ 开启可视化")
         self.start_button.setObjectName("Start")
         self.start_button.clicked.connect(self.start_camera)
+        self.start_button.setEnabled(False)  # Wait until initialization progress reaches 100%.
         self.stop_button = QPushButton("■ 关闭可视化")
         self.stop_button.setObjectName("Stop")
         self.stop_button.setEnabled(False)
@@ -491,9 +679,6 @@ class MainWindow(QMainWindow):
 
         side_layout.addSpacing(5)
         side_layout.addWidget(self.heading("02  /  人物资料库"))
-        hint = QLabel("未录入的人脸默认显示白框 IRRELEVANT。")
-        hint.setWordWrap(True)
-        side_layout.addWidget(hint)
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels(["人物", "身份", "照片数"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -528,34 +713,263 @@ class MainWindow(QMainWindow):
         delete_button.clicked.connect(self.delete_person)
         side_layout.addWidget(delete_button)
 
-        # All seven categories; English-only legend, no explanatory Chinese text.
-        legend = QLabel(
-            '<span style="color:#eeeeee">● IRRELEVANT</span> &nbsp;'
-            '<span style="color:#ff5050">● THREAT</span><br>'
-            '<span style="color:#ffe550">● ADMIN / PRIMARY ASSET / SECONDARY ASSET / CONTINGENCY</span><br>'
-            '<span style="color:#3b9fff">● ASSET CATALYST</span><br>'
-            '<span style="color:#ffe550">◩ ANALOG INTERFACE / ROOT</span><br>'
-            '<span style="color:#eff3fb">◩ RELEVANT-ONE / RELEVANT-TWO / RELEVANT-THREE / RELEVANT-OTHER</span><br>'
-            '<span style="color:#ff6868">◩ IRRELEVANT THREAT</span>'
-        )
-        legend.setObjectName("SubTitle")
-        legend.setWordWrap(True)
-        legend.setTextFormat(Qt.TextFormat.RichText)
-        legend.setStyleSheet("font-size: 11px; padding: 4px 0;")
-        side_layout.addWidget(legend)
+        self.more_cameras_button = QPushButton("＋ 连接更多摄像头")
+        self.more_cameras_button.setMinimumHeight(42)
+        self.more_cameras_button.clicked.connect(self.open_more_cameras)
+        side_layout.addWidget(self.more_cameras_button)
         self.table.itemSelectionChanged.connect(self.sync_category)
         self.refresh_people()
+
+        # The control panel is initially collapsed. A slim hover target is
+        # anchored to the right edge; Qt animates the panel's actual width,
+        # so the video area reflows at the same time instead of being covered.
+        self._sidebar_open = False
+        self._sidebar_pinned = False
+        self._sidebar_last_hover = time.monotonic()
+        # Animate the *allocated* width, not just maximumWidth.  With the
+        # stretchable video on the left, changing maximumWidth alone may
+        # leave the sidebar at width 0 indefinitely (Windows/Qt layouts).
+        self.sidebar_anim = QVariantAnimation(self)
+        self.sidebar_anim.setDuration(270)
+        self.sidebar_anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self.sidebar_anim.valueChanged.connect(self._apply_sidebar_width)
+        self.edge_trigger = QFrame(central)
+        self.edge_trigger.setObjectName("EdgeTrigger")
+        self.edge_trigger.setStyleSheet(
+            "QFrame#EdgeTrigger {background:rgba(120,150,180,35); "
+            "border-left:1px solid #54677c;}")
+        self.edge_trigger.setToolTip("鼠标移动到右侧可展开控制栏 · F2 锁定/取消锁定")
+        self.edge_trigger.installEventFilter(self)
+        central.installEventFilter(self)
+        self._place_edge_trigger()
+        self.edge_trigger.raise_()
+        self.sidebar_poll = QTimer(self)
+        self.sidebar_poll.setInterval(80)
+        self.sidebar_poll.timeout.connect(self._check_sidebar_hover)
+        self.sidebar_poll.start()
 
         self.clock_timer = QTimer(self)
         self.clock_timer.timeout.connect(self.refresh_overlays)
         self.clock_timer.start(1000)
         self.refresh_overlays()
+        self.standby_timer = QTimer(self)
+        self.standby_timer.setInterval(40)
+        self.standby_timer.timeout.connect(self.on_standby_tick)
+        self.begin_boot_sequence()
+        self.standby_timer.start()
+        QApplication.instance().installEventFilter(self)
+        self.screen.setFocus()
 
     @staticmethod
     def heading(text):
         heading = QLabel(text)
         heading.setStyleSheet("color:#aaccf2; font-size:15px; font-weight:bold; margin:3px 0 4px;")
         return heading
+
+    def _place_edge_trigger(self):
+        if not hasattr(self, "edge_trigger"):
+            return
+        target = self.centralWidget()
+        if target is None:
+            return
+        self.edge_trigger.setGeometry(max(0, target.width()-14), 0,
+                                      14, target.height())
+
+    def _apply_sidebar_width(self, value):
+        """Reserve real layout space on every animation frame.
+
+        Changing only maximumWidth does not force a zero-stretch Qt widget
+        to expand. Keeping both size constraints equal makes the video and
+        controls resize smoothly together, while the end state remains 0 px.
+        """
+        width = max(0, int(round(float(value))))
+        self.side_panel.setMinimumWidth(width)
+        self.side_panel.setMaximumWidth(width)
+
+    def _set_sidebar_open(self, opened: bool):
+        if opened == self._sidebar_open:
+            return
+        self._sidebar_open = opened
+        self.sidebar_anim.stop()
+        # Taking the current constrained width allows reversing the motion
+        # without jumping if the pointer moves during an animation.
+        current = self.side_panel.minimumWidth()
+        self.sidebar_anim.setStartValue(current)
+        self.sidebar_anim.setEndValue(self.sidebar_width if opened else 0)
+        self.sidebar_anim.start()
+        if opened:
+            self._sidebar_last_hover = time.monotonic()
+            self.edge_trigger.hide()
+        else:
+            self.edge_trigger.show()
+            self.edge_trigger.raise_()
+
+    def _check_sidebar_hover(self):
+        if not self.isVisible() or QApplication.activeModalWidget() is not None:
+            return
+        if self._sidebar_pinned:
+            return
+
+        cursor = QCursor.pos()
+        central = self.centralWidget()
+        location = central.mapFromGlobal(cursor)
+        pointer_in_window = central.rect().contains(location)
+        now = time.monotonic()
+        near_right_edge = (pointer_in_window and
+                           location.x() >= central.width() - 24)
+
+        if not self._sidebar_open:
+            # Reliable fallback for a missed Enter event on the narrow hover
+            # strip (e.g. mouse was already there when the widget appeared).
+            if self.isActiveWindow() and near_right_edge:
+                self._set_sidebar_open(True)
+            return
+
+        on_sidebar = self.side_panel.rect().contains(
+            self.side_panel.mapFromGlobal(cursor))
+        if on_sidebar or near_right_edge:
+            self._sidebar_last_hover = now
+        elif now - self._sidebar_last_hover > 0.55:
+            self._set_sidebar_open(False)
+
+    def eventFilter(self, watched, event):
+        if hasattr(self, "edge_trigger") and watched is self.edge_trigger:
+            if event.type() in (QEvent.Type.Enter, QEvent.Type.MouseButtonPress):
+                self._set_sidebar_open(True)
+        if watched is self.centralWidget() and event.type() == QEvent.Type.Resize:
+            self._place_edge_trigger()
+        if event.type() == QEvent.Type.KeyPress and self.isActiveWindow():
+            if event.key() == Qt.Key.Key_F2 and not event.isAutoRepeat():
+                self._sidebar_pinned = not self._sidebar_pinned
+                self._set_sidebar_open(self._sidebar_pinned)
+                return True
+            # Enter only, and never while a text field or control is being
+            # edited (prevent accidental camera activation on dialog accept).
+            if (event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
+                    and self.capture is None and self.boot_finished
+                    and not event.isAutoRepeat()):
+                focus = QApplication.focusWidget()
+                if not isinstance(focus, (QLineEdit, QSpinBox, QDoubleSpinBox,
+                                          QDateTimeEdit, QComboBox, QPushButton,
+                                          QTableWidget)):
+                    self.start_default_camera()
+                    return True
+        return super().eventFilter(watched, event)
+
+    def begin_boot_sequence(self):
+        self.boot_started_at = time.perf_counter()
+        self.boot_finished = False
+        self.boot_progress.setValue(0)
+        self.boot_progress.show()
+        self.boot_state.setText("PROCESSING...")
+        self.ready_fade.setOpacity(1.0)
+        self.prompt_fade.setOpacity(0.0)
+        self.signal_dot.setStyleSheet("background:#797e85; border-radius:10px;")
+        self.machine_name.setStyleSheet("color:#979da5;")
+        self.start_prompt.hide()
+        self.start_button.setEnabled(False)
+        self.update_standby_frame()
+
+    def adjust_boot_duration(self, _position):
+        value, ok = QInputDialog.getDouble(self, "启动进度条", "加载时间（秒）",
+                                           float(self.settings.get("boot_seconds", 1.0)),
+                                           .2, 30.0, 1)
+        if ok:
+            self.settings["boot_seconds"] = value
+            self.persist_settings()
+            if self.capture is None:
+                self.begin_boot_sequence()
+
+    def open_appearance_settings(self):
+        dialog = AppearanceSettingsDialog(self.settings, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        old_video = self.settings.get("intro_video_path", "")
+        self.settings.update(dialog.result_settings())
+        if self.capture is None:
+            self.camera_select.setValue(int(self.settings["default_camera"]))
+        if old_video != self.settings.get("intro_video_path", ""):
+            self.release_intro_video()
+            self._intro_error_path = None
+        self.persist_settings()
+        if self.capture is None:
+            self.update_standby_frame()
+            self.refresh_overlays()
+            self.screen.setFocus()
+
+    def start_default_camera(self):
+        self.camera_select.setValue(int(self.settings.get("default_camera", 0)))
+        self.start_camera()
+
+    def release_intro_video(self):
+        if self.intro_capture is not None:
+            self.intro_capture.release()
+            self.intro_capture = None
+
+    def update_standby_frame(self):
+        if self.capture is not None:
+            return
+        if not self.settings.get("intro_enabled", True):
+            self.release_intro_video()
+            self.screen.clear()
+            return
+        frame = None
+        path = str(self.settings.get("intro_video_path", "")).strip()
+        if path and path != self._intro_error_path and Path(path).is_file():
+            if self.intro_capture is None:
+                # Only locally selected user-owned videos. No network activity.
+                self.intro_capture = cv2.VideoCapture(path)
+                if not self.intro_capture.isOpened():
+                    self._intro_error_path = path
+                    self.release_intro_video()
+            if self.intro_capture is not None:
+                ok, frame = self.intro_capture.read()
+                if not ok:
+                    self.intro_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ok, frame = self.intro_capture.read()
+                if not ok:
+                    frame = None
+                    self._intro_error_path = path
+                    self.release_intro_video()
+        if frame is None:
+            frame = render_standby(time.perf_counter()-self.boot_started_at)
+        elif frame.shape[1] > 960:
+            scale = 960.0 / frame.shape[1]
+            frame = cv2.resize(frame, (960, max(1, round(frame.shape[0] * scale))))
+        self.show_video_frame(frame)
+
+    def show_video_frame(self, frame):
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0],
+                       QImage.Format.Format_RGB888).copy()
+        pixmap = QPixmap.fromImage(image)
+        self.screen.setPixmap(pixmap.scaled(self.screen.size(),
+            Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+
+    def on_standby_tick(self):
+        if self.capture is not None:
+            return
+        self.update_standby_frame()
+        elapsed = time.perf_counter()-self.boot_started_at
+        if not self.boot_finished:
+            duration = max(.2, float(self.settings.get("boot_seconds", 1.0)))
+            progress = min(100, int(100*elapsed/duration))
+            self.boot_progress.setValue(progress)
+            if progress >= 100:
+                self.boot_finished = True
+                self.boot_completed_at = time.perf_counter()
+                self.boot_progress.hide()
+                self.boot_state.setText("READY")
+                self.start_prompt.show()
+                self.start_button.setEnabled(True)
+                self.machine_name.setStyleSheet("color:#e9edf4;")
+                self.signal_dot.setStyleSheet("background:#cd2424; border-radius:10px;")
+                self.screen.setFocus()
+        if self.boot_finished:
+            phase = time.perf_counter() - self.boot_completed_at
+            fade = smooth_pulse_opacity(phase, period=2.1)
+            self.ready_fade.setOpacity(fade)
+            self.prompt_fade.setOpacity(fade)
 
     def video_context_menu(self, position):
         """Right-click the video to restore a field previously set to hidden."""
@@ -611,6 +1025,12 @@ class MainWindow(QMainWindow):
         self.coordinates_button.setVisible(geo is not None)
         if geo is not None:
             self.coordinates_button.setText("GPS  " + geo)
+        # A disabled intro leaves only the blinking start prompt in the
+        # black video area; restore metadata as soon as a camera starts.
+        if self.capture is None and not self.settings.get("intro_enabled", True):
+            self.user_time_button.hide()
+            self.camera_time_button.hide()
+            self.coordinates_button.hide()
 
     def edit_user_time(self):
         dialog = ClockSettingsDialog("本地时间 · 时区 / 隐藏", self.settings.get("user_clock", {}), parent=self)
@@ -759,6 +1179,8 @@ class MainWindow(QMainWindow):
 
     def activate_source(self, kind, target, key, name):
         """Switch active view to ONE source; never auto-connect to a network URL."""
+        if not self.boot_finished:
+            return False
         try:
             self.ensure_engine()
         except Exception as exc:
@@ -817,6 +1239,10 @@ class MainWindow(QMainWindow):
             new_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         new_capture.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         self.timer.stop()
+        self.release_intro_video()
+        self.start_prompt.hide()
+        self.ready_fade.setOpacity(1.0)
+        self.boot_state.setText("ACTIVE")
         if self.capture is not None:
             self.capture.release()
         self.capture = new_capture
@@ -849,8 +1275,11 @@ class MainWindow(QMainWindow):
         self.source_key = f"local:{self.camera_select.value()}"
         self.source_name = ""
         self.screen.clear()
-        self.screen.setText("识别已停止\n\nCAMERA RELEASED")
+        self.boot_state.setText("READY")
+        self.start_prompt.show()
+        self.boot_completed_at = time.perf_counter()
         self.status.setText("状态：已关闭。摄像头已释放。")
+        self.update_standby_frame()
         self.refresh_overlays()
 
     def on_frame(self):
@@ -890,12 +1319,7 @@ class MainWindow(QMainWindow):
                 track.last_recognition = self.frame_count
             annotated = render(frame, tracks, self.smoothed_fps,
                                source_mode="NETWORK" if self.source_kind == "network" else "LOCAL")
-            rgb = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
-            image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.strides[0],
-                           QImage.Format.Format_RGB888).copy()
-            pixmap = QPixmap.fromImage(image)
-            self.screen.setPixmap(pixmap.scaled(self.screen.size(),
-                Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            self.show_video_frame(annotated)
             now = time.perf_counter()
             if self.last_timestamp is not None:
                 delta = max(1e-6, now-self.last_timestamp)
@@ -908,7 +1332,12 @@ class MainWindow(QMainWindow):
             traceback.print_exc()
 
     def closeEvent(self, event):
+        self.sidebar_poll.stop()
+        self.sidebar_anim.stop()
+        self.standby_timer.stop()
         self.stop_camera()
+        self.release_intro_video()
+        QApplication.instance().removeEventFilter(self)
         self.persist_settings()
         self.db.close()
         super().closeEvent(event)
@@ -919,6 +1348,7 @@ def main():
     app.setApplicationName("The Machine · Local Face Visualizer")
     window = MainWindow()
     window.show()
+    QTimer.singleShot(0, window.screen.setFocus)
     if missing_models():
         QMessageBox.information(window, "还需要下载模型",
             "程序界面可以打开，但当前尚缺人脸识别模型。\n\n"

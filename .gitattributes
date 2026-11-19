@@ -1,2 +1,5 @@
-# Auto detect text files and perform LF normalization
+# Normalize source text; keep Windows batch scripts with CRLF endings.
 * text=auto
+*.bat text eol=crlf
+*.py text eol=lf
+*.md text eol=lf
