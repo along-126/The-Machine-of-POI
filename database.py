@@ -5,6 +5,7 @@ and migrated in place without dropping the face_samples table or its rows.
 """
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 import sqlite3
@@ -83,7 +84,9 @@ class Database:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         backup_path = self.path.with_name(f"{self.path.stem}.before-v3-{timestamp}.bak")
         # SQLite backup API safely handles WAL databases and copies all samples.
-        with sqlite3.connect(str(backup_path)) as dest:
+        # sqlite3.Connection's context manager commits or rolls back but does not close.
+        # Explicitly close the backup connection so Windows can release its file handle.
+        with closing(sqlite3.connect(str(backup_path))) as dest:
             self.connection.backup(dest)
         quoted_labels = ",".join("'" + label.replace("'", "''") + "'" for label in LABELS)
         try:

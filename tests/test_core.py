@@ -1,4 +1,5 @@
 """Core tests run offline. No camera, network or source face photos required."""
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -60,7 +61,8 @@ def test_reject_same_photo_two_identities():
 def test_upgrade_old_database_keeps_samples_and_backup():
     with tempfile.TemporaryDirectory() as folder:
         db_file = Path(folder)/"machine.db"
-        with sqlite3.connect(db_file) as con:
+        # Commit the fixture transaction, then release its Windows file handle.
+        with closing(sqlite3.connect(db_file)) as con, con:
             con.execute("""CREATE TABLE people (
               id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE,
               label TEXT NOT NULL CHECK(label IN ('IRRELEVANT','THREAT','CONTINGENCY','INDIGO'))
@@ -137,7 +139,7 @@ def test_upgrade_previous_blue_labels_preserves_face_samples():
             "RELEVANT-THREE", "RELEVANT-OTHER", "IRRELEVANT THREAT"
         ]
         allowed = ",".join(repr(x) for x in old_labels)
-        with sqlite3.connect(db_file) as con:
+        with closing(sqlite3.connect(db_file)) as con, con:
             con.execute(f"CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, "
                         f"name TEXT NOT NULL UNIQUE, label TEXT NOT NULL CHECK(label IN ({allowed})))")
             con.execute("CREATE TABLE face_samples (id INTEGER PRIMARY KEY AUTOINCREMENT, "
