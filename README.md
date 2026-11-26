@@ -26,15 +26,31 @@ The Machine of POI 是一款使用 **Python、PySide6 和 OpenCV** 开发的 Win
 
 ## Screenshots / 软件截图
 
-### Main Interface / 软件主界面
+以下截图来自当前 Windows 11 版本，展示待启动画面、动态侧边控制栏和实时人脸识别效果。  
+The following screenshots show the current Windows 11 UI: standby mode, the sliding control panel, and live face tracking.
 
-![The Machine Main Interface](assets/the-Machine-of-POI-screenshots/main-window.png)
+### 1. READY 待启动界面 / READY standby
 
-### Face Recognition / 人脸识别效果
+![READY standby screen with original animated background](assets/the-Machine-of-POI-screenshots/standby-ready.webp)
 
-![The Machine Face Recognition](assets/the-Machine-of-POI-screenshots/face-recognition.jpg)
+完成启动加载后显示 `READY` 和“按ENTER键启动”，摄像头此时尚未启用。  
+After the boot sequence, `READY` appears; the camera remains off until started by the user.
 
-> **截图提醒 / Screenshot note：** 仓库现有截图可能与持续迭代的界面有所不同。发布前请人工核对截图是否准确，以及人脸、姓名、视频源等信息是否已适当脱敏。 / Screenshots may lag UI changes. Before release, verify their accuracy and redact any private faces, names or camera details.
+### 2. 动态侧边栏 / Sliding control panel
+
+![Expanded camera and people control panel](assets/the-Machine-of-POI-screenshots/sidebar-expanded.webp)
+
+鼠标移到右侧边缘即可展开控制栏，可设置摄像头编号、管理人物资料，按 **F2** 锁定或取消锁定面板。  
+Hover near the right edge to reveal camera controls and the people database; press **F2** to pin or unpin the panel.
+
+### 3. 实时人脸识别 / Live face tracking
+
+![Live face-tracking HUD with privacy-covered face](assets/the-Machine-of-POI-screenshots/face-recognition-active.webp)
+
+启动摄像头后，识别框跟随画面中的人脸，展示用户配置的人物标签。本示例已遮挡主要人脸，避免公开可识别的个人面部信息。  
+After starting the camera, the HUD tracks faces and shows user-assigned labels. The main face in this demonstration is covered for privacy.
+
+> **隐私提示 / Privacy:** 截图可能含有背景人物或场景信息；上传新的截图前，请确认已获得必要授权并检查隐私内容。 / Screenshots may contain bystanders or location details; check permission and privacy before publishing new screenshots.
 
 ### 已实现的功能
 
