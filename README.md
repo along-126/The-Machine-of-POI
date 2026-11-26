@@ -45,7 +45,7 @@ Hover near the right edge to reveal camera controls and the people database; pre
 
 ### 3. 实时人脸识别 / Live face tracking
 
-![Live face-tracking HUD with privacy-covered face](assets/the-Machine-of-POI-screenshots/face-recognition-active.webp)
+
 
 启动摄像头后，识别框跟随画面中的人脸，展示用户配置的人物标签。本示例已遮挡主要人脸，避免公开可识别的个人面部信息。  
 After starting the camera, the HUD tracks faces and shows user-assigned labels. The main face in this demonstration is covered for privacy.
