@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMainWindow, QMenu, QMessageBox, QPushButton, QSpinBox, QTabWidget, QTableWidget,
     QTableWidgetItem, QVBoxLayout, QWidget, QHeaderView, QProgressBar, QInputDialog,
-    QGraphicsOpacityEffect, QSizePolicy,
+    QGraphicsOpacityEffect, QSizePolicy, QSlider,
 )
 
 from camera_sources import validate_stream_url
@@ -38,6 +38,7 @@ from mjpeg_capture import MjpegCapture, prefers_http_mjpeg, MJPEGStreamError
 from tracking import FaceTracker
 from standby import render_standby
 from ui_effects import smooth_pulse_opacity
+from video_sources import VideoSourceSpec, open_video_source, SourceOpenError
 
 ROOT = Path(__file__).resolve().parent
 SETTINGS_FILE = ROOT / "data" / "settings.json"
@@ -383,6 +384,18 @@ class MoreCamerasDialog(QDialog):
         bt_layout.addStretch()
         tabs.addTab(bluetooth, "蓝牙设备 / Windows 摄像头")
 
+        file_tab = QWidget()
+        file_layout = QVBoxLayout(file_tab)
+        file_info = QLabel("选择本地 MP4、AVI、MKV、MOV、M4V 或 WEBM 视频。\n"
+                           "视频将在本机播放并执行人脸识别，不会上传至网络。")
+        file_info.setWordWrap(True)
+        file_layout.addWidget(file_info)
+        open_file_btn = QPushButton("▶ 打开本地视频并开始识别")
+        open_file_btn.clicked.connect(self.open_local_video)
+        file_layout.addWidget(open_file_btn)
+        file_layout.addStretch()
+        tabs.addTab(file_tab, "本地视频文件")
+
         root.addWidget(QLabel("当前版本一次显示一路视频；选择另一来源会切换画面，不会自动联网。"))
         close_btn = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         close_btn.rejected.connect(self.reject)
@@ -447,6 +460,15 @@ class MoreCamerasDialog(QDialog):
         if self.host.activate_source("local", index, f"local:{index}", f"摄像头 {index}"):
             self.host.camera_select.setValue(index)
             self.host.persist_settings()
+            self.accept()
+
+    def open_local_video(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择本地视频", "",
+            "视频文件 (*.mp4 *.avi *.mkv *.mov *.m4v *.webm);;所有文件 (*)")
+        if not path:
+            return
+        if self.host.activate_source("file", path, f"file:{path}", Path(path).name):
             self.accept()
 
 
@@ -676,6 +698,19 @@ class MainWindow(QMainWindow):
         buttons.addWidget(self.start_button)
         buttons.addWidget(self.stop_button)
         side_layout.addLayout(buttons)
+
+        file_controls = QHBoxLayout()
+        self.file_pause_button = QPushButton("⏸ 暂停视频")
+        self.file_pause_button.clicked.connect(self.toggle_file_pause)
+        self.file_pause_button.setVisible(False)
+        self.file_seek = QSlider(Qt.Orientation.Horizontal)
+        self.file_seek.setRange(0, 1000)
+        self.file_seek.setVisible(False)
+        self.file_seek.sliderReleased.connect(self.seek_file_video)
+        file_controls.addWidget(self.file_pause_button)
+        file_controls.addWidget(self.file_seek, 1)
+        side_layout.addLayout(file_controls)
+        self.file_paused = False
 
         side_layout.addSpacing(5)
         side_layout.addWidget(self.heading("02  /  人物资料库"))
@@ -1186,53 +1221,10 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self.alert("模型尚未准备好", f"{exc}\n请先运行 01_install_environment.bat 和 02_download_models.bat。")
             return False
-        if kind == "network":
-            try:
-                target = validate_stream_url(target)
-            except ValueError as exc:
-                self.alert("视频源错误", exc)
-                return False
-            # MJPEG cameras are a special case: on some Windows OpenCV/FFmpeg
-            # builds the very same URL plays in a browser but VideoCapture
-            # times out. Use an independent HTTP MJPEG decoder instead.
-            if prefers_http_mjpeg(target):
-                try:
-                    new_capture = MjpegCapture(target, timeout=8)
-                except MJPEGStreamError as exc:
-                    self.alert("MJPEG 视频流连接失败", str(exc))
-                    return False
-            else:
-                try:
-                    new_capture = cv2.VideoCapture(
-                        target, cv2.CAP_FFMPEG,
-                        [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
-                         cv2.CAP_PROP_READ_TIMEOUT_MSEC, 8000]
-                    )
-                except (TypeError, cv2.error):
-                    # OpenCV builds without timeout support may still connect.
-                    new_capture = cv2.VideoCapture(target, cv2.CAP_FFMPEG)
-                if not new_capture.isOpened() and target.lower().startswith(("http://", "https://")):
-                    # HTTP cameras may provide MJPEG from a .cgi endpoint.
-                    # Reuse the URL only after FFmpeg has failed; this does
-                    # not affect RTSP or working HLS/MP4 sources.
-                    new_capture.release()
-                    try:
-                        new_capture = MjpegCapture(target, timeout=8)
-                    except MJPEGStreamError as exc:
-                        self.alert("网络视频连接失败", "FFmpeg 无法打开该地址，HTTP/MJPEG 也未能读取视频。\n"
-                                   f"详细信息：{exc}")
-                        return False
-        else:
-            index = int(target)
-            backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
-            new_capture = cv2.VideoCapture(index, backend)
-            if not new_capture.isOpened():
-                new_capture.release()
-                new_capture = cv2.VideoCapture(index)
-        if not new_capture.isOpened():
-            new_capture.release()
-            self.alert("无法打开摄像头", "请检查摄像头编号或视频地址、访问授权、网络状态和设备占用。\n"
-                       "网络源需提供可直接解码的视频流，不一定支持网页播放链接。")
+        try:
+            new_capture = open_video_source(VideoSourceSpec(kind, target, str(key), str(name)))
+        except (SourceOpenError, ValueError, TypeError, cv2.error) as exc:
+            self.alert("无法打开视频源", f"请检查摄像头、文件或授权视频地址。\n详细信息：{exc}")
             return False
         if kind == "local":
             new_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
@@ -1246,6 +1238,11 @@ class MainWindow(QMainWindow):
         if self.capture is not None:
             self.capture.release()
         self.capture = new_capture
+        self.file_paused = False
+        self.file_pause_button.setVisible(kind == "file")
+        self.file_seek.setVisible(kind == "file")
+        self.file_pause_button.setText("⏸ 暂停视频")
+        self.file_seek.setValue(0)
         self.source_kind = kind
         self.source_key = str(key)
         self.source_name = name
@@ -1259,8 +1256,31 @@ class MainWindow(QMainWindow):
         self.persist_settings()
         self.status.setText("状态：识别运行中 · " + name)
         self.refresh_overlays()
-        self.timer.start(30)
+        # File playback uses the encoded frame rate rather than forcing 33 FPS.
+        fps = new_capture.get(cv2.CAP_PROP_FPS) if kind == "file" else 0
+        interval = max(20, min(100, round(1000 / fps))) if 1 <= fps <= 100 else 30
+        self.timer.start(interval)
         return True
+
+    def toggle_file_pause(self):
+        if self.source_kind != "file" or self.capture is None:
+            return
+        self.file_paused = not self.file_paused
+        self.file_pause_button.setText("▶ 继续视频" if self.file_paused else "⏸ 暂停视频")
+        if self.file_paused:
+            self.timer.stop()
+        else:
+            fps = self.capture.get(cv2.CAP_PROP_FPS)
+            interval = max(20, min(100, round(1000 / fps))) if 1 <= fps <= 100 else 30
+            self.timer.start(interval)
+
+    def seek_file_video(self):
+        if self.source_kind != "file" or self.capture is None:
+            return
+        length = self.capture.get(cv2.CAP_PROP_FRAME_COUNT)
+        if length > 0:
+            self.capture.set(cv2.CAP_PROP_POS_FRAMES, round(length * self.file_seek.value() / 1000))
+            self.tracker.reset()
 
     def stop_camera(self):
         self.timer.stop()
@@ -1268,6 +1288,9 @@ class MainWindow(QMainWindow):
             self.capture.release()
             self.capture = None
         self.tracker.reset()
+        self.file_paused = False
+        self.file_pause_button.setVisible(False)
+        self.file_seek.setVisible(False)
         self.start_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.camera_select.setEnabled(True)
@@ -1288,11 +1311,23 @@ class MainWindow(QMainWindow):
         try:
             ok, frame = self.capture.read()
             if not ok or frame is None:
+                if self.source_kind == "file":
+                    # Normal end-of-file is not a camera/network failure.
+                    self.stop_camera()
+                    self.status.setText("状态：本地视频播放结束；已释放文件。")
+                    return
                 extra_error = getattr(self.capture, "last_error", "")
                 self.stop_camera()
                 self.alert("视频读取失败", "视频源无法继续提供画面，请检查连接或网络状态。"
                            + ("\n详细信息：" + extra_error if extra_error else ""))
                 return
+            if self.source_kind == "file":
+                length = self.capture.get(cv2.CAP_PROP_FRAME_COUNT)
+                position = self.capture.get(cv2.CAP_PROP_POS_FRAMES)
+                if length > 0 and not self.file_seek.isSliderDown():
+                    self.file_seek.blockSignals(True)
+                    self.file_seek.setValue(min(1000, round(1000 * position / length)))
+                    self.file_seek.blockSignals(False)
             if self.source_kind == "local":
                 frame = cv2.flip(frame, 1)
             h, w = frame.shape[:2]
@@ -1318,7 +1353,8 @@ class MainWindow(QMainWindow):
                     track.label, track.name, track.person_id = "IRRELEVANT", "", None
                 track.last_recognition = self.frame_count
             annotated = render(frame, tracks, self.smoothed_fps,
-                               source_mode="NETWORK" if self.source_kind == "network" else "LOCAL")
+                               source_mode=("NETWORK" if self.source_kind == "network" else
+                                             "FILE" if self.source_kind == "file" else "LOCAL"))
             self.show_video_frame(annotated)
             now = time.perf_counter()
             if self.last_timestamp is not None:
