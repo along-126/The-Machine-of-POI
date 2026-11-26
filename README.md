@@ -3,7 +3,7 @@
 **《疑犯追踪》（Person of Interest）风格的本地人脸识别可视化程序**  
 **A local face-recognition visualizer inspired by *Person of Interest*.**
 
-![Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D4) ![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB) [![Python tests](https://github.com/along-126/The-Machine-of-POI/actions/workflows/python-tests.yml/badge.svg?branch=main)](https://github.com/along-126/The-Machine-of-POI/actions/workflows/python-tests.yml) [![Latest release](https://img.shields.io/github/v/release/along-126/The-Machine-of-POI?display_name=tag)](https://github.com/along-126/The-Machine-of-POI/releases) ![Next](https://img.shields.io/badge/Next-v1.1.0%20in%20preparation-f5a623)
+![Windows 11](https://img.shields.io/badge/Platform-Windows%2011-0078D4) ![Python 3.14](https://img.shields.io/badge/Python-3.14-3776AB) [![Python tests](https://github.com/along-126/The-Machine-of-POI/actions/workflows/python-tests.yml/badge.svg?branch=main)](https://github.com/along-126/The-Machine-of-POI/actions/workflows/python-tests.yml) [![Latest release](https://img.shields.io/github/v/release/along-126/The-Machine-of-POI?display_name=tag)](https://github.com/along-126/The-Machine-of-POI/releases) 
 
 > **非官方粉丝项目 / Unofficial fan project**  
 > 本项目借鉴电视剧中 The Machine 的视觉风格，不隶属于或代表电视剧版权方。它是独立的人脸识别**可视化**工具，不参与 Windows Hello 身份验证，也不负责解锁电脑。  
@@ -11,8 +11,8 @@
 
 **语言 / Languages：** [简体中文](#简体中文) · [English](#english)
 
-**当前版本 / Releases：** [v1.0.0](https://github.com/along-126/The-Machine-of-POI/releases/tag/v1.0.0) 已发布；**v1.1.0 界面改版正在准备中，尚未发布。**  
-**Version status:** [v1.0.0](https://github.com/along-126/The-Machine-of-POI/releases/tag/v1.0.0) is published; the **v1.1.0 UI redesign is in preparation and is not released yet.**
+**版本 / Releases：** 请查看 [GitHub Releases](https://github.com/along-126/The-Machine-of-POI/releases) 获取当前正式版本。v1.1.0 包含新版启动界面及侧边栏；查看 [v1.1.0 更新说明](docs/RELEASE_NOTES_v1.1.0.md)。  
+**Releases:** Check [GitHub Releases](https://github.com/along-126/The-Machine-of-POI/releases) for the latest published version. The v1.1.0 UI update is summarized in the [v1.1.0 release notes](docs/RELEASE_NOTES_v1.1.0.md).
 
 ---
 
@@ -26,8 +26,8 @@ The Machine of POI 是一款使用 **Python、PySide6 和 OpenCV** 开发的 Win
 
 ## Screenshots / 软件截图
 
-以下截图来自当前 Windows 11 版本，展示待启动画面、动态侧边控制栏和实时人脸识别效果。  
-The following screenshots show the current Windows 11 UI: standby mode, the sliding control panel, and live face tracking.
+以下截图展示当前 Windows 11 版本的 READY 待启动画面与动态侧边控制栏。实时识别效果的截图暂未公开。  
+These screenshots show the current Windows 11 READY standby mode and sliding control panel. The live-recognition screenshot is currently omitted.
 
 ### 1. READY 待启动界面 / READY standby
 
@@ -43,14 +43,8 @@ After the boot sequence, `READY` appears; the camera remains off until started b
 鼠标移到右侧边缘即可展开控制栏，可设置摄像头编号、管理人物资料，按 **F2** 锁定或取消锁定面板。  
 Hover near the right edge to reveal camera controls and the people database; press **F2** to pin or unpin the panel.
 
-### 3. 实时人脸识别 / Live face tracking
-
-
-
-启动摄像头后，识别框跟随画面中的人脸，展示用户配置的人物标签。本示例已遮挡主要人脸，避免公开可识别的个人面部信息。  
-After starting the camera, the HUD tracks faces and shows user-assigned labels. The main face in this demonstration is covered for privacy.
-
-> **隐私提示 / Privacy:** 截图可能含有背景人物或场景信息；上传新的截图前，请确认已获得必要授权并检查隐私内容。 / Screenshots may contain bystanders or location details; check permission and privacy before publishing new screenshots.
+> **截图隐私 / Image privacy:** 实时识别预览图已从 README 中移除。公开截图前请检查人脸、背景人物和场景信息；仅移除 README 引用不等于从仓库历史中删除图片。  
+> The live-recognition screenshot has been removed from this README. Review all people, background details and permissions before publishing visuals; removing a README reference does not erase an image from Git history.
 
 ### 已实现的功能
 
@@ -149,9 +143,10 @@ The-Machine-of-POI/
 └── tests/                       # 自动化测试
 ```
 
-### 发布准备与后续计划
+### 后续开发计划
 
-- **v1.1.0 发行准备中：** 需进一步核对最新界面、安装步骤、截图与 Windows 实机运行结果，然后再创建正式 Release。
+- **v1.2.0 计划：** 统一视频源接口，改善网络连接诊断，支持导入本地视频文件。
+- **v1.3.0 计划：** 使用可复用画面组件实现四路视频显示，为后续 8、16 路及更多布局预留扩展能力。
 - 优化网络摄像头连接状态、超时诊断和断线重连。
 - 增加本地视频文件导入与播放。
 - 研究多路摄像头同时显示及性能控制。
@@ -224,7 +219,7 @@ To run the tests in an already configured local environment:
 
 ### Release preparation and roadmap
 
-**v1.0.0** is published; **v1.1.0** is in preparation, pending a final check of the UI, screenshots, installation steps and real Windows operation. Planned improvements include local video-file import, more reliable network-stream handling and diagnostics, optional multi-camera views, and smoother HUD animations. Windows Hello integration is **not part of the current implementation**.
+The v1.1.0 UI update is documented in the linked release notes. Future plans include unified video-source handling and local-video import (v1.2.0), then expandable multi-tile display with an initial 2×2 layout (v1.3.0). More reliable network-stream diagnostics, performance optimization and larger grids will follow. Windows Hello integration is **not** implemented.
 
 ---
 
